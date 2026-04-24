@@ -23,19 +23,12 @@ Left-censored exposure data from limits of detection are ubiquitous in environme
 
 ```
 .
-├── SIMEX_flexdashboard.Rmd        # Source for the dashboard (this is the file to knit)
-├── index.html                     # Rendered dashboard for GitHub Pages
-├── interactive_widgets.Rmd        # Earlier standalone widgets (historical)
-├── code/                          # SAS simulation programs
-│   ├── Poster Scenario 1 LOD 20th Percentile.sas
-│   ├── Poster Scenario 1 LOD 35th Percentile.sas
-│   ├── Poster Scenario 1 LOD 50th Percentile.sas
-│   ├── Poster Scenario 2 LOD 20th Percentile.sas
-│   ├── Poster Scenario 2 LOD 35th Percentile.sas
-│   ├── Poster Scenario 2 LOD 50th Percentile.sas
-│   └── Sim Stretched Exponential for Ziqi w Plot.sas
+├── SIMEX_flexdashboard.Rmd   # Source for the dashboard (this is the file to knit)
+├── index.html                # Rendered dashboard served by GitHub Pages
 └── README.md
 ```
+
+The summary statistics shown in the two interactive widgets (Mean β̂, Bias, empirical SD, and 95% CI coverage for each method × censoring level × scenario) are embedded directly in the `.Rmd` as data frames, so the Rmd is self-contained and fully reproducible. The upstream SAS programs that generated those summary statistics via 500-replicate Monte Carlo simulation are not included in this repository.
 
 ## Reproduce the dashboard
 
