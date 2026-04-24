@@ -1,0 +1,395 @@
+---
+title: "Handling Left-Censored Exposure Data in Logistic Regression"
+author: "Ziqi Guo · Advisor: Prof. Robert Lyles · Rollins School of Public Health, Emory University"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    source_code: embed
+    theme:
+      version: 4
+      bootswatch: cosmo
+    navbar:
+      - title: "GitHub"
+        href: "https://github.com/ziqiguo567/simex-dashboard"
+        align: right
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(flexdashboard)
+library(plotly)
+library(dplyr)
+library(DT)
+library(htmltools)
+
+method_colors <- c(
+  "Complete"    = "#999999",
+  "LOD"         = "#E41A1C",
+  "LOD/2"       = "#FF7F00",
+  "LOD/√2" = "#FDBF6F",
+  "Drop"        = "#377EB8",
+  "MDI"         = "#984EA3",
+  "MLE"         = "#4DAF4A",
+  "SIMEX"       = "#A65628"
+)
+```
+
+Overview {data-icon="fa-chart-line"}
+=====================================
+
+Row {data-height=130}
+-------------------------------------
+
+### True &beta; (Scenario 1 — DF Model)
+```{r}
+valueBox(0.30, caption = "Target log-odds ratio under correctly specified discriminant function model", color = "primary")
+```
+
+### True &beta; (Scenario 2 — Misspecified)
+```{r}
+valueBox(0.50, caption = "Target log-odds ratio under mixture-of-normals exposure (misspecification)", color = "info")
+```
+
+### Worst naive bias
+```{r}
+valueBox("+0.803", caption = "LOD substitution at 50% censoring, Scenario 2 — a 161% overestimate of true β", color = "danger")
+```
+
+### Methods compared
+```{r}
+valueBox(8, caption = "Complete · LOD · LOD/2 · LOD/√2 · Drop · MDI · MLE · SIMEX", color = "success")
+```
+
+Row
+-------------------------------------
+
+### Background
+
+In environmental and occupational epidemiology, laboratory instruments cannot measure exposures below a **Limit of Detection (δ)**. Values below δ are called **non-detects** and are **left-censored**. The proportion of non-detects in real-world studies commonly ranges from a few percent to over **50%**.
+
+Failing to handle non-detects properly causes three consequences:
+
+- **Biased β̂ estimates** — naive substitution (e.g., plugging in δ) can push log-odds-ratio estimates systematically away from truth
+- **Incorrect standard errors** — compromising hypothesis tests and confidence intervals
+- **Poor CI coverage** — undermining the validity of statistical inference
+
+**Objective.** Compare six methods for handling left-censored exposure in logistic regression, evaluate their performance under correctly specified *vs.* misspecified distributional assumptions, and assess a **SIMEX-like extrapolation** approach as a model-robust alternative.
+
+### Real-world impact
+
+Left-censored exposure data from limits of detection are ubiquitous in environmental and occupational epidemiology; choosing the wrong correction method (e.g., LOD/2 substitution) can produce biases exceeding **40% of the true effect** and invalid confidence intervals. This dashboard helps applied researchers select a bias-correction method (MLE, MDI, or SIMEX) appropriate to their censoring level and distributional assumptions.
+
+Scenario 1 — DF Model {data-icon="fa-chart-area"}
+=====================================
+
+Row {data-height=520}
+-------------------------------------
+
+### Scenario 1: Bias Across Censoring Levels by Method (True &beta; = 0.30)
+
+```{r}
+s1 <- data.frame(
+  Method = rep(c("Complete", "LOD", "LOD/2", "LOD/√2",
+                 "Drop", "MDI", "MLE", "SIMEX"), 3),
+  Censoring = rep(c("21%", "35%", "50%"), each = 8),
+  Mean_Beta = c(
+    0.305, 0.321, 0.345, 0.335, 0.305, 0.305, 0.302, 0.309,
+    0.304, 0.356, 0.383, 0.372, 0.305, 0.305, 0.302, 0.306,
+    0.305, 0.440, 0.440, 0.440, 0.307, 0.304, 0.301, 0.317
+  ),
+  Bias = c(
+    0.005, 0.021, 0.045, 0.035, 0.005, 0.005, 0.002, 0.009,
+    0.004, 0.056, 0.083, 0.072, 0.005, 0.005, 0.002, 0.006,
+    0.005, 0.140, 0.140, 0.140, 0.007, 0.004, 0.001, 0.017
+  ),
+  SD = c(
+    0.029, 0.029, 0.032, 0.030, 0.032, 0.032, 0.026, 0.031,
+    0.025, 0.029, 0.033, 0.031, 0.032, 0.034, 0.024, 0.050,
+    0.026, 0.042, 0.042, 0.042, 0.045, 0.045, 0.033, 0.092
+  ),
+  Coverage = c(
+    94.2, 91.0, 70.8, 80.6, 93.2, 93.0, 94.0, NA,
+    96.4, 58.4, 25.8, 36.0, 96.8, 96.6, 97.6, NA,
+    96.0,  2.8,  2.8,  2.8, 94.2, 94.2, 98.4, NA
+  )
+)
+
+s1$Censoring <- factor(s1$Censoring, levels = c("21%", "35%", "50%"))
+s1$Method <- factor(s1$Method, levels = names(method_colors))
+
+s1$tooltip <- paste0(
+  "<b>Method: ", s1$Method, "</b><br>",
+  "Censoring Level: ", s1$Censoring, "<br>",
+  "Mean β̂ (log-OR): ", sprintf("%.3f", s1$Mean_Beta), "<br>",
+  "Bias (β̂ − true β): ", sprintf("%+.3f", s1$Bias), "<br>",
+  "Empirical SD: ", sprintf("%.3f", s1$SD), "<br>",
+  ifelse(is.na(s1$Coverage), "95% CI Coverage: N/A",
+         paste0("95% CI Coverage: ", sprintf("%.1f%%", s1$Coverage)))
+)
+
+p1 <- plot_ly()
+for (m in levels(s1$Method)) {
+  df_m <- subset(s1, Method == m)
+  p1 <- p1 %>% add_trace(
+    data = df_m,
+    x = ~Censoring, y = ~Bias, text = ~tooltip,
+    type = "scatter", mode = "lines+markers",
+    name = m,
+    marker = list(size = 11, color = method_colors[[m]],
+                  line = list(width = 1, color = "black")),
+    line = list(width = 2.5, color = method_colors[[m]]),
+    hoverinfo = "text"
+  )
+}
+p1 %>% layout(
+  title = list(
+    text = "Scenario 1: Bias Across Censoring Levels by Method (True β = 0.30)",
+    font = list(size = 16)),
+  xaxis = list(
+    title = list(text = "Censoring Level (% below LOD)", font = list(size = 14)),
+    tickfont = list(size = 12),
+    categoryorder = "array", categoryarray = c("21%", "35%", "50%")),
+  yaxis = list(
+    title = list(text = "Bias (Estimated β̂ − True β, log-OR units)",
+                 font = list(size = 14)),
+    tickfont = list(size = 12)),
+  legend = list(title = list(text = "<b>Method</b>"), font = list(size = 11)),
+  shapes = list(list(type = "line", x0 = -0.3, x1 = 2.3, y0 = 0, y1 = 0,
+                     xref = "x", yref = "y",
+                     line = list(color = "black", width = 1.5, dash = "dash"))),
+  annotations = list(list(x = 2.25, y = 0, text = "Zero Bias", showarrow = FALSE,
+                          yanchor = "bottom", font = list(size = 11))),
+  hovermode = "closest"
+) %>% config(responsive = TRUE, displaylogo = FALSE)
+```
+
+Row {data-height=280}
+-------------------------------------
+
+### Key findings — correctly specified model
+
+- **Naive substitution fails** — LOD, LOD/2, and LOD/√2 show bias growing from ~0.02 at 21% censoring to **+0.140 at 50% censoring** (47% of true β).
+- **MLE is optimal** when the discriminant-function assumption holds, with |bias| ≤ 0.002 and 95% CI coverage of 94–98% across all censoring levels.
+- **Drop and MDI are nearly unbiased** by design — censoring depends only on X, so complete-case logistic regression is valid, but precision degrades as censoring rises.
+- **SIMEX** produces near-zero bias at all censoring levels, at the cost of increased SD (0.031 → 0.092) due to extrapolation uncertainty.
+- Hover any point to read exact bias, empirical SD, and 95% CI coverage. Toggle methods on/off via the legend.
+
+Scenario 2 — Misspecified {data-icon="fa-chart-bar"}
+=====================================
+
+Row {data-height=520}
+-------------------------------------
+
+### Scenario 2: Bias Across Censoring Levels by Method (True &beta; = 0.50)
+
+```{r}
+s2 <- data.frame(
+  Method = rep(c("Complete", "LOD", "LOD/2", "LOD/√2",
+                 "Drop", "MDI", "MLE", "SIMEX"), 3),
+  Censoring = rep(c("20%", "35%", "50%"), each = 8),
+  Mean_Beta = c(
+    0.507, 0.639, 0.318, 0.415, 0.516, 0.515, 0.575, 0.536,
+    0.501, 0.814, 0.297, 0.413, 0.483, 0.482, 0.623, 0.296,
+    0.510, 1.303, 0.300, 0.451, 0.479, 0.478, 0.813, 0.643
+  ),
+  Bias = c(
+    +0.007, +0.139, -0.182, -0.085, +0.016, +0.015, +0.075, +0.036,
+    +0.001, +0.314, -0.203, -0.087, -0.017, -0.018, +0.123, -0.204,
+    +0.010, +0.803, -0.200, -0.049, -0.021, -0.022, +0.313, +0.143
+  ),
+  SD = c(
+    0.078, 0.109, 0.050, 0.066, 0.138, 0.138, 0.101, 0.110,
+    0.082, 0.160, 0.052, 0.072, 0.241, 0.240, 0.118, 0.176,
+    0.077, 0.329, 0.059, 0.089, 0.457, 0.456, 0.166, 0.427
+  ),
+  Coverage = c(
+    95.4, 75.4,  6.6, 72.8, 96.2, 96.4, 86.0, NA,
+    93.2, 46.8,  4.4, 75.6, 96.6, 96.8, 79.6, NA,
+    95.4, 19.6,  8.6, 89.8, 94.0, 94.0, 51.4, NA
+  )
+)
+
+s2$Censoring <- factor(s2$Censoring, levels = c("20%", "35%", "50%"))
+s2$Method <- factor(s2$Method, levels = names(method_colors))
+
+s2$tooltip <- paste0(
+  "<b>Method: ", s2$Method, "</b><br>",
+  "Censoring Level: ", s2$Censoring, "<br>",
+  "Mean β̂ (log-OR): ", sprintf("%.3f", s2$Mean_Beta), "<br>",
+  "Bias (β̂ − true β): ", sprintf("%+.3f", s2$Bias), "<br>",
+  "Empirical SD: ", sprintf("%.3f", s2$SD), "<br>",
+  ifelse(is.na(s2$Coverage), "95% CI Coverage: N/A",
+         paste0("95% CI Coverage: ", sprintf("%.1f%%", s2$Coverage)))
+)
+
+p2 <- plot_ly()
+for (m in levels(s2$Method)) {
+  df_m <- subset(s2, Method == m)
+  p2 <- p2 %>% add_trace(
+    data = df_m,
+    x = ~Censoring, y = ~Bias, text = ~tooltip,
+    type = "scatter", mode = "lines+markers",
+    name = m,
+    marker = list(size = 11, color = method_colors[[m]],
+                  line = list(width = 1, color = "black")),
+    line = list(width = 2.5, color = method_colors[[m]]),
+    hoverinfo = "text"
+  )
+}
+p2 %>% layout(
+  title = list(
+    text = "Scenario 2: Bias Across Censoring Levels by Method (True β = 0.50)",
+    font = list(size = 16)),
+  xaxis = list(
+    title = list(text = "Censoring Level (% below LOD)", font = list(size = 14)),
+    tickfont = list(size = 12),
+    categoryorder = "array", categoryarray = c("20%", "35%", "50%")),
+  yaxis = list(
+    title = list(text = "Bias (Estimated β̂ − True β, log-OR units)",
+                 font = list(size = 14)),
+    tickfont = list(size = 12)),
+  legend = list(title = list(text = "<b>Method</b>"), font = list(size = 11)),
+  shapes = list(list(type = "line", x0 = -0.3, x1 = 2.3, y0 = 0, y1 = 0,
+                     xref = "x", yref = "y",
+                     line = list(color = "black", width = 1.5, dash = "dash"))),
+  annotations = list(list(x = 2.25, y = 0, text = "Zero Bias", showarrow = FALSE,
+                          yanchor = "bottom", font = list(size = 11))),
+  hovermode = "closest"
+) %>% config(responsive = TRUE, displaylogo = FALSE)
+```
+
+Row {data-height=280}
+-------------------------------------
+
+### Key findings — under model misspecification
+
+- **LOD substitution explodes** — bias climbs from +0.139 (20% censoring) to **+0.803 at 50% censoring**, a 161% overestimate of the true β = 0.50.
+- **MLE loses its advantage** — the Tobit-type MLE assumes a normal exposure, which is violated by the mixture-of-normals DGM; bias grows to +0.313 at 50% censoring.
+- **Drop and MDI remain the most reliable** — near-zero bias at all censoring levels, though SDs widen to ~0.46 at heavy censoring.
+- **SIMEX provides a favorable bias–variance trade-off** — bias (|+0.143| at 50%) is smaller than LOD (+0.803) and MLE (+0.313) when assumptions fail, confirming its value as a **model-robust** correction.
+
+Methods & Design {data-icon="fa-cogs"}
+=====================================
+
+Row
+-------------------------------------
+
+### Eight methods compared
+
+| Method | Idea |
+|---|---|
+| **Complete** | Oracle benchmark — fit logistic regression on full uncensored X. |
+| **LOD** | Substitute every non-detect with the detection limit δ. |
+| **LOD/2** | Substitute with δ/2 (most common in practice). |
+| **LOD/√2** | Substitute with δ/√2 (used when exposure distribution is approximately log-normal). |
+| **Drop** | Discard rows with X < δ; fit logistic regression on detects only. |
+| **MDI** | Missing-indicator method: impute X = 0 for non-detects and add M = 𝟙(X < δ) to the model. |
+| **MLE** | Discriminant-function-based MLE treating non-detects as left-censored observations. |
+| **SIMEX ★** | Inflate LOD through a grid δ < δ₁ < … < δₖ, fit extrapolation curve to biased estimates, extrapolate back to p = 0. |
+
+### SIMEX framework (this work's contribution)
+
+The core idea is **counterintuitive**: since left-censoring biases estimates upward, *deliberately* increase the LOD threshold in steps, observe how the estimates worsen, then **extrapolate back to zero censoring** to recover an unbiased estimate.
+
+**Procedure.**
+
+1. Inflate LOD to a grid δ < δ₁ < δ₂ < … < δₖ; compute β̂(δₖ) via LOD substitution at each level.
+2. Fit an extrapolation function through (pₖ, β̂(pₖ)) where pₖ is the censoring proportion:
+   - **2-parameter:** β̂(p) = b₀ · exp(b₁ p)
+   - **3-parameter (stretched exponential, preferred):** β̂(p) = b₀ · exp(b₁ · pˢ)
+3. Extrapolate to p → 0. AIC-based selection chooses between 2- and 3-parameter fits; a safety rule falls back to LOD substitution if the SIMEX estimate would exceed it.
+
+Row
+-------------------------------------
+
+### Simulation design — Scenario 1 (DF model)
+
+- **Data-generating model:** X | Y, sex ∼ N(β₀ + γ₁·Y + γ₂·sex, σ²), with γ₁ = 15, σ² = 50 ⇒ true **β₁ = 15/50 = 0.30**
+- **Outcome model:** logit P(Y = 1 | X, sex) = β₀ + β₁·X + β₂·sex
+- **Covariate:** sex ∼ Bernoulli(0.5), γ₂ = 3.5
+- **Sample size:** n = 500 · **Censoring:** 21% / 35% / 50% (LOD = −8, −4, 0)
+- **Replications:** 500 per setting · **Metrics:** Bias, empirical SD, 95% CI coverage
+
+### Simulation design — Scenario 2 (misspecified)
+
+- **Data-generating model:** X ∼ 0.5·N(5, 1) + 0.5·N(7, 0.25)  *(bimodal mixture — violates DF normality)*
+- **Outcome model:** logit P(Y = 1 | X, sex) = β₀ + β₁·X + β₂·sex; β₀ = −0.7, **β₁ = 0.50**, β₂ = −0.2
+- **Covariate:** sex ∼ Bernoulli(0.5)
+- **Sample size:** n = 1000 · **Censoring:** 20% / 35% / 50% (LOD = 4.75, 5.5, 6.2)
+- **Replications:** 500 per setting · **Metrics:** Bias, empirical SD, 95% CI coverage
+
+Dataset {data-icon="fa-database"}
+=====================================
+
+Row
+-------------------------------------
+
+### Data source & collection
+
+**Source.** Both scenarios use **simulated data** — no human-subjects data. Simulation programs (SAS) and full parameter settings are available in the project's GitHub repository: <https://github.com/ziqiguo567/simex-dashboard>. The design follows Lyles et al. (2009), *Amer. Statistician* **63**(4): 320–327, and Gong (2025), MSPH Capstone, Rollins SPH.
+
+**Sample size.** Scenario 1: n = 500 per replication. Scenario 2: n = 1000 per replication. **500 Monte Carlo replications** per censoring level per scenario (6 cells × 500 = 3,000 total fits per method).
+
+**How data were collected.** Data were **simulated in SAS** using pseudo-random number generation; left-censoring was imposed by setting any simulated X below the scenario-specific LOD δ to non-detect. For each replication, eight methods were fit and β̂, SE, and 95% CI computed.
+
+**Study population.** Not a real population — the simulation represents a hypothetical case-control-style exposure–outcome study in environmental or occupational epidemiology, where a continuous biomarker is left-censored at a laboratory detection limit.
+
+**Time period.** Simulations generated between **January and April 2026** on Emory University's computing environment as part of the MSPH capstone at Rollins School of Public Health.
+
+Row {data-height=250}
+-------------------------------------
+
+### Results table (downloadable)
+
+```{r}
+combined <- rbind(
+  cbind(Scenario = "1 (DF)", s1[, c("Method","Censoring","Mean_Beta","Bias","SD","Coverage")]),
+  cbind(Scenario = "2 (Misspec.)", s2[, c("Method","Censoring","Mean_Beta","Bias","SD","Coverage")])
+)
+colnames(combined) <- c("Scenario", "Method", "Censoring", "Mean β̂", "Bias", "SD", "95% CI Coverage (%)")
+
+datatable(
+  combined,
+  rownames = FALSE,
+  filter = "top",
+  extensions = c("Buttons"),
+  options = list(
+    pageLength = 12,
+    dom = "Bfrtip",
+    buttons = c("csv", "excel"),
+    scrollX = TRUE
+  )
+) %>%
+  formatRound(columns = c("Mean β̂", "Bias", "SD"), digits = 3) %>%
+  formatRound(columns = "95% CI Coverage (%)", digits = 1)
+```
+
+Conclusions {data-icon="fa-check-circle"}
+=====================================
+
+Row
+-------------------------------------
+
+### Practical recommendations
+
+- **Avoid naive substitution methods (LOD, LOD/2, LOD/√2) when censoring exceeds ~20%.** Bias accelerates sharply and 95% CI coverage collapses (as low as 2.8% at 50% censoring in Scenario 1).
+- **MLE is optimal — but only when the discriminant-function assumption (conditional normality of X) holds.** Under misspecification, its bias exceeds even LOD/2 at heavy censoring.
+- **Drop and MDI perform well under this simulation's DGM, but that reflects a structural advantage**: because censoring is determined purely by X < δ (independent of Y given X), complete-case analysis is valid by design. In real-world settings where non-detection correlates with outcome or unmeasured confounders, these methods may no longer hold up.
+- **When the DF assumption is violated, SIMEX outperforms both naive substitution and MLE** across all censoring levels, confirming its value as a **robust**, model-agnostic correction.
+- Overall, **MDI is the most consistently reliable** approach studied here; **SIMEX is preferred when distributional assumptions are in doubt**.
+
+### References
+
+1. Cook, J.R. & Stefanski, L.A. (1994). Simulation-Extrapolation Estimation in Parametric Measurement Error Models. *JASA*, **89**(428), 1314–1328.
+2. Carroll, R.J., Ruppert, D., Stefanski, L.A., & Crainiceanu, C.M. (2006). *Measurement Error in Nonlinear Models: A Modern Perspective*. Chapman & Hall/CRC.
+3. Apanasovich, T.V., Carroll, R.J., & Maity, A. (2009). SIMEX and standard error estimation in semiparametric measurement error models. *Electron. J. Stat.*, **3**, 318–348.
+4. Lyles, R.H., Guo, Y., & Hill, A.N. (2009). A Fresh Look at the Discriminant Function Approach for Estimating an Adjusted Odds Ratio. *The American Statistician*, **63**(4), 320–327.
+5. Chiou, S.H., Betensky, R.A., & Balasubramanian, R. (2019). The Missing Indicator Approach for Censored Covariates. *Ann. Epidemiol.*, **38**, 57–64.
+6. Longford, N.T. (2012). Handling the Limit of Detection by Extrapolation. *Stat. in Medicine*, **31**, 3133–3146.
+7. Longford, N.T., Cuevas, J.R.T., & Alvear, C. (2016). Analysis of a Marker for Cancer of the Thyroid with a LOD. *J. Appl. Stat.*, **44**, 1–14.
+8. Gong, Q. (2025). Evaluating the discriminant function approach accounting for nondetects. MSPH Capstone, Rollins SPH, Emory University.
+
+---
+
+**Code & data:** <https://github.com/ziqiguo567/simex-dashboard> · **Acknowledgment:** Sincere gratitude to Prof. Robert Lyles for his guidance and continued encouragement throughout this project, and to the Rollins School of Public Health for providing a supportive academic environment.

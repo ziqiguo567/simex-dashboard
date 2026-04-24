@@ -1,0 +1,9 @@
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+*_cache/
+*_files/
+SIMEX_flexdashboard_cache/
+SIMEX_flexdashboard_files/
