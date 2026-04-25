@@ -3,6 +3,7 @@
 **Author:** Ziqi Guo · **Advisor:** Prof. Robert Lyles
 **Institution:** Rollins School of Public Health, Emory University
 **Live dashboard:** <https://ziqiguo567.github.io/simex-dashboard/>
+**Personal site:** <https://ziqiguo567.github.io/>
 
 ## Research topic
 
